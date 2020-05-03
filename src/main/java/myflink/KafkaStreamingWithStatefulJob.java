@@ -58,6 +58,7 @@ import java.util.UUID;
  *  1. 用Flink SQL替代所有或者部分代码
  *  2. 增加并行度
  *  3. 对于Window时间区间是1day这种比较长的，在Window未结束时, Window聚合定期输出最新结果
+ *
  * */
 public class KafkaStreamingWithStatefulJob {
 
