@@ -2,6 +2,7 @@ package myflink;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.streaming.api.TimeCharacteristic;
@@ -14,17 +15,26 @@ import org.apache.flink.streaming.api.functions.windowing.AllWindowFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
+import org.apache.flink.streaming.connectors.elasticsearch.ElasticsearchSinkFunction;
+import org.apache.flink.streaming.connectors.elasticsearch.RequestIndexer;
 import org.apache.flink.streaming.connectors.elasticsearch6.ElasticsearchSink;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.OutputTag;
+import org.apache.http.HttpHost;
+import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.client.Requests;
 
 import java.sql.Timestamp;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
 
@@ -107,8 +117,7 @@ public class KafkaStreamingWithStatefulJob {
 
     // 思考: 不用side output也可以做到 多路输出（如一个输出原始数据，一个聚合），那么他们的区别是什么？
     // [only for debug] dataStream.writeAsText(outputPath, FileSystem.WriteMode.OVERWRITE);
-    final String logDetailIndexName = "access_log";
-    dataStream.addSink(new ElasticsearchSink(logDetailIndexName));
+    dataStream.addSink(createElasticsearchSinkForLogDetail().build());
 
      DataStream<Tuple3<String, Long, Long>> aggsDataStream = dataStream
        .getSideOutput(outputTag)
@@ -123,8 +132,8 @@ public class KafkaStreamingWithStatefulJob {
     // All of them apply to windows for a key.
 
     // [only for debug] aggsDataStream.print();
-    final String logAggsIndexName = "access_log_aggs";
-    aggsDataStream.addSink(new ElasticsearchSink(logAggsIndexName));
+
+    aggsDataStream.addSink(createElasticsearchSinkForAggs().build());
 
     env.execute("Window WordCount");
 
@@ -142,14 +151,6 @@ public class KafkaStreamingWithStatefulJob {
     return properties;
   }
 
-  /**
-   * References:
-   *  https://ci.apache.org/projects/flink/flink-docs-release-1.10/dev/connectors/elasticsearch.html#elasticsearch-sink
-   * */
-  public static ElasticsearchSink createElasticsearchSink() {
-    // TODO:
-
-  }
 
   public static class StreamSplitter extends ProcessFunction<LogEvent, LogEvent> {
 
@@ -253,7 +254,8 @@ public class KafkaStreamingWithStatefulJob {
     // 所以，maxOutOfOrderness 这个时间直接决定了窗口计算结果延迟输出的时间。
     private final long maxOutOfOrderness = 10000; // 10 seconds
 
-    // 同时，你会观察到一个现象，就是如果一直没有收到新的event，可能会导致部分窗口的计算一直不触发
+    // TODO: 同时，你会观察到一个现象，就是如果一直没有收到EventTime更新的Event，可能会导致部分窗口的计算一直不触发
+    //    那么，当窗口的时间区间是1 hour 甚至是 1 day时，如何才能做到Flink频繁输出这个窗口中计算的最新结果呢？
 
     private long currentMaxTimestamp;
 
@@ -269,5 +271,87 @@ public class KafkaStreamingWithStatefulJob {
       // return the watermark as current highest timestamp minus the out-of-orderness bound
       return new Watermark(currentMaxTimestamp - maxOutOfOrderness);
     }
+  }
+
+  /**
+   * References:
+   *  https://ci.apache.org/projects/flink/flink-docs-release-1.10/dev/connectors/elasticsearch.html#elasticsearch-sink
+   * */
+  public static ElasticsearchSink.Builder<LogEvent> createElasticsearchSinkForLogDetail() {
+
+    final String logDetailIndexName = "access_log";
+
+    List<HttpHost> httpHosts = new ArrayList<>();
+    httpHosts.add(new HttpHost("127.0.0.1", 9200, "http"));
+
+    // use a ElasticsearchSink.Builder to create an ElasticsearchSink
+    ElasticsearchSink.Builder<LogEvent> esSinkBuilder = new ElasticsearchSink.Builder<>(
+      httpHosts,
+      new ElasticsearchSinkFunction<LogEvent>() {
+
+        public IndexRequest createIndexRequest(LogEvent element) {
+          Map<String, Object> json = new HashMap<>();
+          json.put("content", element.eventContent);
+          json.put("time", element.eventTime);
+          json.put("type", element.eventType);
+          json.put("uuid", element.eventUUID);
+
+          return Requests.indexRequest()
+            .index(logDetailIndexName)
+            .type("logs")
+            .source(json);
+        }
+
+        @Override
+        public void process(LogEvent element, RuntimeContext ctx, RequestIndexer indexer) {
+          indexer.add(createIndexRequest(element));
+        }
+      }
+    );
+
+    // configuration for the bulk requests; this instructs the sink to emit after every element, otherwise they would be buffered
+    esSinkBuilder.setBulkFlushMaxActions(1);
+
+
+    return esSinkBuilder;
+  }
+
+
+  public static ElasticsearchSink.Builder<Tuple3<String, Long, Long>> createElasticsearchSinkForAggs() {
+
+    final String logAggsIndexName = "access_log_aggs";
+
+    List<HttpHost> httpHosts = new ArrayList<>();
+    httpHosts.add(new HttpHost("127.0.0.1", 9200, "http"));
+
+    // use a ElasticsearchSink.Builder to create an ElasticsearchSink
+    ElasticsearchSink.Builder<Tuple3<String, Long, Long>> esSinkBuilder = new ElasticsearchSink.Builder<>(
+      httpHosts,
+      new ElasticsearchSinkFunction<Tuple3<String, Long, Long>>() {
+
+        public IndexRequest createIndexRequest(Tuple3<String, Long, Long> element) {
+          Map<String, Object> json = new HashMap<>();
+          json.put("time", element.f0);
+          json.put("interval", element.f1);
+          json.put("count", element.f2);
+
+          return Requests.indexRequest()
+            .index(logAggsIndexName)
+            .type("logs")
+            .source(json);
+        }
+
+        @Override
+        public void process(Tuple3<String, Long, Long> element, RuntimeContext ctx, RequestIndexer indexer) {
+          indexer.add(createIndexRequest(element));
+        }
+      }
+    );
+
+    // configuration for the bulk requests; this instructs the sink to emit after every element, otherwise they would be buffered
+    esSinkBuilder.setBulkFlushMaxActions(1);
+
+
+    return esSinkBuilder;
   }
 }
