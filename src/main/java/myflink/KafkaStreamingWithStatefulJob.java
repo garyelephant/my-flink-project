@@ -113,12 +113,8 @@ public class KafkaStreamingWithStatefulJob {
 
     // [only for debug] DataStream<String> socketStream = env.socketTextStream("localhost", 9999)
 
-    DataStream<String> kafkaStream = env
-      .addSource(
-        new FlinkKafkaConsumer(
-          kafkaTopic,
-          new SimpleStringSchema(),
-          createKafkaConsumerConfig()));
+    DataStream<String> kafkaStream = env.addSource(
+      new FlinkKafkaConsumer(kafkaTopic, new SimpleStringSchema(), createKafkaConsumerConfig()));
 
     // [only for debug] SingleOutputStreamOperator<LogEvent> dataStream = socketStream
     SingleOutputStreamOperator<LogEvent> dataStream = kafkaStream
