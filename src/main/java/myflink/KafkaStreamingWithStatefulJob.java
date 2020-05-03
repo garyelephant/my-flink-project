@@ -54,6 +54,8 @@ import java.util.UUID;
  * 通过此程序，你可以学习到：
  * （1） 数据延迟(late data), 乱序(out-of-order)，flink是怎么处理的。
  *
+ * TODO:
+ *  1. 用Flink SQL替代所有或者部分代码
  * */
 public class KafkaStreamingWithStatefulJob {
 
