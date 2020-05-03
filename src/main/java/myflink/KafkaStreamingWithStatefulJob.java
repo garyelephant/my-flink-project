@@ -318,9 +318,9 @@ public class KafkaStreamingWithStatefulJob {
       }
     );
 
-    // configuration for the bulk requests; this instructs the sink to emit after every element, otherwise they would be buffered
+    // configuration for the bulk requests; this instructs the sink to emit after every element,
+    // otherwise they would be buffered
     esSinkBuilder.setBulkFlushMaxActions(1);
-
 
     return esSinkBuilder;
   }
@@ -357,9 +357,9 @@ public class KafkaStreamingWithStatefulJob {
       }
     );
 
-    // configuration for the bulk requests; this instructs the sink to emit after every element, otherwise they would be buffered
+    // configuration for the bulk requests; this instructs the sink to emit after every element,
+    // otherwise they would be buffered
     esSinkBuilder.setBulkFlushMaxActions(1);
-
 
     return esSinkBuilder;
   }
