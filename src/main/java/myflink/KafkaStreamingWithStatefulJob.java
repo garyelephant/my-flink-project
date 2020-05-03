@@ -5,6 +5,7 @@ import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.runtime.state.filesystem.FsStateBackend;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
@@ -58,7 +59,10 @@ import java.util.UUID;
  *  1. 用Flink SQL替代所有或者部分代码
  *  2. 增加并行度
  *  3. 对于Window时间区间是1day这种比较长的，在Window未结束时, Window聚合定期输出最新结果
- *
+ *  4. checkpoint
+ *  5. 上游(Kafka)，下游(Elasticsearch) 不可用后，如何保证数据计算端到端的一致性。
+ *  6. 上游(Kafka)，下游(Elasticsearch) 从不可用变为可用后，Flink如何自动恢复。
+ *  7. 准确描述Keyed Stream / Non-Keyed Stream 与 Window 计算 以及 Parallelism 的关系
  * */
 public class KafkaStreamingWithStatefulJob {
 
@@ -73,9 +77,11 @@ public class KafkaStreamingWithStatefulJob {
     final String kafkaTopic = "access_log";
 
     final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-    // enable checkpoint:
+    // enable checkpoint and set state backend:
     //  see: https://ci.apache.org/projects/flink/flink-docs-release-1.10/dev/connectors/kafka.html#kafka-consumers-and-fault-tolerance
     //  see: https://ci.apache.org/projects/flink/flink-docs-release-1.10/dev/connectors/elasticsearch.html#elasticsearch-sinks-and-fault-tolerance
+    //  see: https://ci.apache.org/projects/flink/flink-docs-stable/ops/state/state_backends.html
+    env.setStateBackend(new FsStateBackend("hdfs://namenode:40010/flink/checkpoints"));
     env.enableCheckpointing(5000); // checkpoint every 5000 msecs
     env.setParallelism(1);
     // TODO: 需要某个Operator中，所有Task都对齐了Watermark，才能输出，所以暂时把Parallelism调整为1
@@ -130,7 +136,7 @@ public class KafkaStreamingWithStatefulJob {
        .assignTimestampsAndWatermarks(new BoundedOutOfOrdernessGenerator())
       .filter(e -> StringUtils.equalsIgnoreCase(e.eventType, "error"))
       // .keyBy(e -> e.eventUUID)
-      .timeWindowAll(windowTime)
+      .timeWindowAll(windowTime) // 这里用的是Tumbling Window，与代码 .window(TumblingEventTimeWindows.of(size)) 是相同的意思。
        .apply(new ErrorLogAggregations());
 
     // So basically there are two possible directions to follow based on the type of calculations
