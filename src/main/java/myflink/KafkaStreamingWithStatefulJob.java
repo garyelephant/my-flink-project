@@ -67,13 +67,14 @@ public class KafkaStreamingWithStatefulJob {
     final Time windowTime = Time.seconds(5);
     final String kafkaTopic = "access_log";
 
-
     final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
     // enable checkpoint:
     //  see: https://ci.apache.org/projects/flink/flink-docs-release-1.10/dev/connectors/kafka.html#kafka-consumers-and-fault-tolerance
     //  see: https://ci.apache.org/projects/flink/flink-docs-release-1.10/dev/connectors/elasticsearch.html#elasticsearch-sinks-and-fault-tolerance
     env.enableCheckpointing(5000); // checkpoint every 5000 msecs
-    env.setParallelism(1); // TODO: 需要某个Operator中，所有Task都对齐了Watermark，才能输出，所以暂时把Parallelism调整为1
+    env.setParallelism(1);
+    // TODO: 需要某个Operator中，所有Task都对齐了Watermark，才能输出，所以暂时把Parallelism调整为1
+    // TODO: keyBy的含义，以及是否可以这样，为什么keyBy需要在filter后面。
 
     // Note that in order to run this example in event time, the program needs to either
     // use sources that directly define event time for the data and emit watermarks themselves,
@@ -123,7 +124,7 @@ public class KafkaStreamingWithStatefulJob {
        .getSideOutput(outputTag)
        .assignTimestampsAndWatermarks(new BoundedOutOfOrdernessGenerator())
       .filter(e -> StringUtils.equalsIgnoreCase(e.eventType, "error"))
-      // .keyBy(e -> e.eventUUID) // TODO: keyBy的含义，以及是否可以这样，为什么keyBy需要在filter后面。
+      // .keyBy(e -> e.eventUUID)
       .timeWindowAll(windowTime)
        .apply(new ErrorLogAggregations());
 
@@ -256,6 +257,7 @@ public class KafkaStreamingWithStatefulJob {
 
     // TODO: 同时，你会观察到一个现象，就是如果一直没有收到EventTime更新的Event，可能会导致部分窗口的计算一直不触发
     //    那么，当窗口的时间区间是1 hour 甚至是 1 day时，如何才能做到Flink频繁输出这个窗口中计算的最新结果呢？
+    //    如果能够做到，它对Flink程序的Sink的要求是，sink是幂等的，这样，当同一个窗口的最新结果输出时，能够覆盖之前的结果。
 
     private long currentMaxTimestamp;
 
