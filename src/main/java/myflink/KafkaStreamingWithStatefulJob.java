@@ -39,7 +39,7 @@ import java.util.Properties;
 import java.util.UUID;
 
 /**
- * 这是一个关于实时从kafka消费数据，并且做一些有状态计算的程序，
+ * 这是一个关于实时从kafka消费数据，并且做一些有状态计算的程序（处理时间用的是EventTime），
  * 场景是：实时流式日志的监控、报警
  * 要求是：
  *    * 消费Kafka数据
@@ -56,6 +56,8 @@ import java.util.UUID;
  *
  * TODO:
  *  1. 用Flink SQL替代所有或者部分代码
+ *  2. 增加并行度
+ *  3. 对于Window时间区间是1day这种比较长的，在Window未结束时, Window聚合定期输出最新结果
  * */
 public class KafkaStreamingWithStatefulJob {
 
