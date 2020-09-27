@@ -143,7 +143,7 @@ public class KafkaStreamingWithStatefulJob {
 
     aggsDataStream.addSink(createElasticsearchSinkForAggs().build());
 
-    env.execute("Window WordCount");
+    env.execute("AccessLog Computation");
 
     // TODO: Window聚合定期输出最新结果，甚至允许Queryable
     // TODO: Retract with update / delete，要求数据是一致的。

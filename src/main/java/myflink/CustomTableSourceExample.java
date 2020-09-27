@@ -18,16 +18,17 @@
 
 package myflink;
 
+import org.apache.flink.api.common.io.BinaryInputFormat;
+import org.apache.flink.api.common.io.FileInputFormat;
 import org.apache.flink.api.common.io.GenericInputFormat;
 import org.apache.flink.api.common.io.InputFormat;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.calcite.shaded.com.google.common.primitives.Ints;
 import org.apache.flink.core.io.GenericInputSplit;
+import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.api.EnvironmentSettings;
-import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.TableSchema;
-import org.apache.flink.table.api.java.BatchTableEnvironment;
+import org.apache.flink.table.api.bridge.java.BatchTableEnvironment;
 import org.apache.flink.table.sources.InputFormatTableSource;
 import org.apache.flink.table.sources.ProjectableTableSource;
 import org.apache.flink.table.sources.TableSource;
@@ -35,9 +36,6 @@ import org.apache.flink.table.types.DataType;
 import org.apache.flink.types.Row;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * Skeleton for a Flink Batch Job.
@@ -62,8 +60,9 @@ public class CustomTableSourceExample {
 
       ExecutionEnvironment fbEnv = ExecutionEnvironment.getExecutionEnvironment();
       // fbEnv.setParallelism(30);
-      BatchTableEnvironment fbTableEnv = BatchTableEnvironment.create(fbEnv);
+	  BatchTableEnvironment fbTableEnv = BatchTableEnvironment.create(fbEnv);
 
+	  // TODO: execute SQL ?
       fbTableEnv.registerTableSource("t1", new LuceneTableSource());
 
       fbTableEnv.toDataSet(fbTableEnv.sqlQuery("select name, age, info from t1"), Row.class).print();
@@ -92,7 +91,7 @@ public class CustomTableSourceExample {
 
 		@Override
 		public InputFormat getInputFormat() {
-			return new LuceneInputFormat(this.selectedFields);
+			return new LuceneInputFormat2(this.selectedFields);
 		}
 
 		@Override
@@ -117,15 +116,49 @@ public class CustomTableSourceExample {
 		}
 	}
 
-	public static class LuceneInputFormat extends GenericInputFormat<Row> {
+	// TODO:
+	// 	FileInputFormat, BinaryInputFormat,
+	//  Lucene 是一个Folder, 如何提高并行度。
+	//  ES Logical Index Dir
+	//      ES Phy Index Dir
+	//          Shard/Lucene Dir
+	//              Segment File(binary)
+	public static class LuceneInputFormat extends FileInputFormat<Row> {
+
+		@Override
+		public boolean reachedEnd() throws IOException {
+			return false;
+		}
+
+		@Override
+		public Row nextRecord(Row reuse) throws IOException {
+			return null;
+		}
+
+//		public void test() {
+//			setFilePath();
+//		}
+	}
+
+
+	public static class LuceneInputFormat3 extends BinaryInputFormat<Row> {
+
+		@Override
+		protected Row deserialize(Row reuse, DataInputView dataInput) throws IOException {
+			return null;
+		}
+	}
+
+
+	public static class LuceneInputFormat2 extends GenericInputFormat<Row> {
 
 		private int count = 0;
 
 		private int[] selectedFields = {};
 
-		public LuceneInputFormat() {}
+		public LuceneInputFormat2() {}
 
-		public LuceneInputFormat(int[] selectedFields) {
+		public LuceneInputFormat2(int[] selectedFields) {
 			this.selectedFields = selectedFields;
 		}
 
