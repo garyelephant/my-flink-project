@@ -1,10 +1,10 @@
 package myflink;
 
+import myflink.utils.ListTimedIterator;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -23,7 +23,7 @@ public class KeyedStreamAndKeyedWindow {
       ints.add(i);
     }
 
-    Iterator<Integer> it = new TimedIterator(ints, 500);
+    Iterator<Integer> it = new ListTimedIterator(ints, 500);
 
     DataStream<Integer> intStream = env.fromCollection(it, Integer.class);
 
@@ -36,7 +36,7 @@ public class KeyedStreamAndKeyedWindow {
     // 情况三：
     // keyedWindowThenNonKeyedWindow(intStream);
 
-    env.execute("Window Max");
+    env.execute("KeyedStreamAndKeyedWindow");
   }
 
   private static void doNonKeyedWindowComputation(DataStream<Integer> intStream) {
@@ -85,38 +85,5 @@ public class KeyedStreamAndKeyedWindow {
       .max(0)
       .print();
 
-  }
-
-  private static class TimedIterator implements Iterator<Integer>, Serializable {
-
-    private List<Integer> ints;
-    private int currentIndex;
-    private long sleepMills;
-
-    public TimedIterator(List<Integer> ints, long sleepMills) {
-      this.ints = ints;
-      this.currentIndex = -1;
-      this.sleepMills = sleepMills;
-    }
-
-    @Override
-    public boolean hasNext() {
-
-      currentIndex++;
-
-      return (currentIndex < ints.size());
-    }
-
-    @Override
-    public Integer next() {
-
-      try {
-        Thread.sleep(this.sleepMills);
-      } catch (InterruptedException e) {
-        System.exit(-1);
-      }
-
-      return ints.get(currentIndex);
-    }
   }
 }
